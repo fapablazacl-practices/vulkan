@@ -164,12 +164,27 @@ int main(int argc, char *argv[]) {
     
     VkDevice device;
     result = ::vkCreateDevice(devices[0], &createInfo, nullptr, &device);
+    std::cout << "CreateDevice result: " << result << std::endl;
+    
+    // create a single command pool
+    VkCommandPoolCreateInfo poolCreateInfo = {};
+    poolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolCreateInfo.queueFamilyIndex = 0;
+    
+    VkCommandPool commandPool;
+    result = ::vkCreateCommandPool(device, &poolCreateInfo, nullptr, &commandPool);
+    std::cout << "CreateCommandPool result: " << result << std::endl;
     
     // get the single queue created along the logical device
     VkQueue queue;
     ::vkGetDeviceQueue(device, 0, 0, &queue);
     
     result = ::vkQueueWaitIdle(queue);
+    std::cout << "QueueWaitIdle result: " << result << std::endl;
+    
+    // destroy the command pool
+    ::vkDestroyCommandPool(device, commandPool, nullptr);
     
     // destroy the device
     ::vkDestroyDevice(device, nullptr);
