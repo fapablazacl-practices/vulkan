@@ -77,120 +77,192 @@ namespace vulkan {
     }
 }
 
+// import operator<< 
+using namespace vulkan; 
+
+class Test01App {
+public:
+    void run() {
+        bool running = initialize();
+        
+        if (running) {
+            for (int i=0; i<120; i++) {
+                render();
+            }
+        }
+        
+        terminate();
+    }
+
+protected:
+    bool initialize() {
+    
+        // create a vulkan instance.
+        VkInstanceCreateInfo info = {};
+        
+        info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        
+        VkResult result;
+        
+        result = ::vkCreateInstance(&info, nullptr, &instance);
+        
+        // get available physical devices in the created instance
+        uint32_t deviceCount;
+        
+        std::vector<VkPhysicalDevice> devices;
+        
+        result = ::vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+        
+        if (deviceCount > 0) {
+            devices.resize(deviceCount);
+            result = ::vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+        } 
+        
+        std::cout << "Found " << deviceCount << " Vulkan device(s)";
+        if (deviceCount > 0) {
+            std::cout << ":" << std::endl;
+        }
+        
+        // display the information on all available physical devices
+        for (VkPhysicalDevice device : devices) {
+            // display device properties
+            VkPhysicalDeviceProperties deviceProperties;
+            
+            ::vkGetPhysicalDeviceProperties(device, &deviceProperties);
+            
+            std::cout << "  API version: "          << vulkan::Version(deviceProperties.apiVersion) << std::endl;
+            std::cout << "  Driver version: "       << deviceProperties.driverVersion << std::endl;
+            std::cout << "  Vendor ID: "            << deviceProperties.vendorID << std::endl;
+            std::cout << "  Device ID: "            << deviceProperties.deviceID << std::endl;
+            std::cout << "  Device Type: "          << deviceProperties.deviceType << std::endl;
+            std::cout << "  Device Name: "          << deviceProperties.deviceName << std::endl;
+            std::cout << "  Pipeline Cache UUID: "  << deviceProperties.pipelineCacheUUID << std::endl;
+            
+            // get available queue family properties
+            std::vector<VkQueueFamilyProperties> families;
+            std::uint32_t familyCount;
+            
+            ::vkGetPhysicalDeviceQueueFamilyProperties(device, &familyCount, nullptr);
+            
+            if (familyCount > 0) {
+                families.resize(familyCount);
+                ::vkGetPhysicalDeviceQueueFamilyProperties(device, &familyCount, families.data());
+            }
+            
+            // display queue family properties
+            for (VkQueueFamilyProperties properties : families) {
+                std::cout << std::endl;
+                std::cout << "  Queue count: "          << properties.queueCount            << std::endl;
+                std::cout << "  Timestamp Valid Bits: " << properties.timestampValidBits    << std::endl;
+                
+                std::cout << "  Queue Flags: ";
+                write_stream(std::cout, properties.queueFlags); 
+                std::cout << std::endl;
+            }
+        }
+        
+        // create a logical device from the first physical device
+        const float priorities[] = {1.0f};
+        
+        VkDeviceQueueCreateInfo queueCreateInfo = {};
+        
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.queueFamilyIndex = 0;
+        queueCreateInfo.pQueuePriorities = priorities;
+        
+        VkDeviceCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        createInfo.queueCreateInfoCount = 1;
+        createInfo.pQueueCreateInfos = &queueCreateInfo;
+        
+        result = ::vkCreateDevice(devices[0], &createInfo, nullptr, &device);
+        std::cout << "CreateDevice result: " << result << std::endl;
+        
+        // create a single command pool
+        VkCommandPoolCreateInfo poolCreateInfo = {};
+        poolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        poolCreateInfo.queueFamilyIndex = 0;
+        
+        result = ::vkCreateCommandPool(device, &poolCreateInfo, nullptr, &commandPool);
+        std::cout << "CreateCommandPool result: " << result << std::endl;
+
+        // create the primary command buffer
+        VkCommandBufferAllocateInfo cmdAllocateInfo = {};
+        cmdAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cmdAllocateInfo.commandPool = commandPool;
+        cmdAllocateInfo.commandBufferCount = 1;
+        cmdAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        
+        result = ::vkAllocateCommandBuffers(device, &cmdAllocateInfo, &commandBuffers[0]);
+
+        // create the secondary command buffer
+        // cmdAllocateInfo.commandPool = commandPool;
+        // cmdAllocateInfo.commandBufferCount = 1;
+        // cmdAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+        // result = ::vkAllocateCommandBuffers(device, &cmdAllocateInfo, &commandBuffers[1]);
+
+        // start the recording of the first command buffer
+        VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
+        cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        
+        result = ::vkBeginCommandBuffer(commandBuffers[0], &cmdBufferBeginInfo);
+        
+        // end the recording of the second command buffer
+        ::vkEndCommandBuffer(commandBuffers[0]);
+        
+        // get the single queue created along the logical device
+        ::vkGetDeviceQueue(device, 0, 0, &queue);
+        
+        return true;
+    }
+    
+    void render() {    
+        VkResult errorCode = ::vkQueueWaitIdle(queue);
+        
+        if (errorCode) {
+            std::cout << "QueueWaitIdle result: " << errorCode << std::endl;
+        }
+    }
+    
+    void terminate() {
+        // free the command buffers
+        ::vkFreeCommandBuffers(device, commandPool, 1, commandBuffers);
+        
+        // destroy the command pool
+        if (commandPool) {
+            ::vkDestroyCommandPool(device, commandPool, nullptr);
+            commandPool = nullptr;
+        }
+        
+        // destroy the device
+        if (device) {
+            ::vkDestroyDevice(device, nullptr);
+            device = nullptr;
+        }
+        
+        // finalize the vulkan instance
+        if (instance) {
+            ::vkDestroyInstance(instance, nullptr);
+            instance = nullptr;
+        }
+    }
+    
+private:
+    VkInstance instance;
+    VkDevice device;
+    VkCommandPool commandPool;
+    VkCommandBuffer commandBuffers[2];
+    VkQueue queue;
+};
+
 int main(int argc, char *argv[]) {
     
-    // import operator<< 
-    using namespace vulkan; 
+    Test01App app;
     
-    // create a vulkan instance.
-    VkInstance instance;
-    VkInstanceCreateInfo info = {};
-    
-    info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    
-    VkResult result;
-    
-    result = ::vkCreateInstance(&info, nullptr, &instance);
-    
-    // get available physical devices in the created instance
-    uint32_t deviceCount;
-    
-    std::vector<VkPhysicalDevice> devices;
-    
-    result = ::vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    
-    if (deviceCount > 0) {
-        devices.resize(deviceCount);
-        result = ::vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
-    } 
-    
-    std::cout << "Found " << deviceCount << " Vulkan device(s)";
-    if (deviceCount > 0) {
-        std::cout << ":" << std::endl;
-    }
-    
-    // display the information on all available physical devices
-    for (VkPhysicalDevice device : devices) {
-        // display device properties
-        VkPhysicalDeviceProperties deviceProperties;
-        
-        ::vkGetPhysicalDeviceProperties(device, &deviceProperties);
-        
-        std::cout << "  API version: "          << vulkan::Version(deviceProperties.apiVersion) << std::endl;
-        std::cout << "  Driver version: "       << deviceProperties.driverVersion << std::endl;
-        std::cout << "  Vendor ID: "            << deviceProperties.vendorID << std::endl;
-        std::cout << "  Device ID: "            << deviceProperties.deviceID << std::endl;
-        std::cout << "  Device Type: "          << deviceProperties.deviceType << std::endl;
-        std::cout << "  Device Name: "          << deviceProperties.deviceName << std::endl;
-        std::cout << "  Pipeline Cache UUID: "  << deviceProperties.pipelineCacheUUID << std::endl;
-        
-        // get available queue family properties
-        std::vector<VkQueueFamilyProperties> families;
-        std::uint32_t familyCount;
-        
-        ::vkGetPhysicalDeviceQueueFamilyProperties(device, &familyCount, nullptr);
-        
-        if (familyCount > 0) {
-            families.resize(familyCount);
-            ::vkGetPhysicalDeviceQueueFamilyProperties(device, &familyCount, families.data());
-        }
-        
-        // display queue family properties
-        for (VkQueueFamilyProperties properties : families) {
-            std::cout << std::endl;
-            std::cout << "  Queue count: "          << properties.queueCount            << std::endl;
-            std::cout << "  Timestamp Valid Bits: " << properties.timestampValidBits    << std::endl;
-            
-            std::cout << "  Queue Flags: ";
-            write_stream(std::cout, properties.queueFlags); 
-            std::cout << std::endl;
-        }
-    }
-    
-    // create a logical device from the first physical device
-    const float priorities[] = {1.0f};
-    
-    VkDeviceQueueCreateInfo queueCreateInfo = {};
-    
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.queueCount = 1;
-    queueCreateInfo.queueFamilyIndex = 0;
-    queueCreateInfo.pQueuePriorities = priorities;
-    
-    VkDeviceCreateInfo createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    createInfo.queueCreateInfoCount = 1;
-    createInfo.pQueueCreateInfos = &queueCreateInfo;
-    
-    VkDevice device;
-    result = ::vkCreateDevice(devices[0], &createInfo, nullptr, &device);
-    std::cout << "CreateDevice result: " << result << std::endl;
-    
-    // create a single command pool
-    VkCommandPoolCreateInfo poolCreateInfo = {};
-    poolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolCreateInfo.queueFamilyIndex = 0;
-    
-    VkCommandPool commandPool;
-    result = ::vkCreateCommandPool(device, &poolCreateInfo, nullptr, &commandPool);
-    std::cout << "CreateCommandPool result: " << result << std::endl;
-    
-    // get the single queue created along the logical device
-    VkQueue queue;
-    ::vkGetDeviceQueue(device, 0, 0, &queue);
-    
-    result = ::vkQueueWaitIdle(queue);
-    std::cout << "QueueWaitIdle result: " << result << std::endl;
-    
-    // destroy the command pool
-    ::vkDestroyCommandPool(device, commandPool, nullptr);
-    
-    // destroy the device
-    ::vkDestroyDevice(device, nullptr);
-    
-    // finalize the vulkan instance
-    ::vkDestroyInstance(instance, nullptr);
+    app.run();
     
     return 0;
 }
